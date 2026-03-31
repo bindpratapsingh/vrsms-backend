@@ -35,6 +35,7 @@ public class StaffController {
             response.put("memberId", member.getMemberId());
             response.put("fullName", user.getFullName());
             response.put("userId", user.getUserId());
+            response.put("photoUrl", member.getPhotoUrl());
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
