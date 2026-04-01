@@ -21,4 +21,5 @@ public interface LoanRepository extends JpaRepository<Loan, UUID> {
     @Query("SELECT l FROM Loan l WHERE l.member.memberId = :memberId AND l.status = :status")
     List<Loan> findByMember_MemberIdAndStatus(@Param("memberId") UUID memberId, @Param("status") LoanStatus status);
 
+    long countByMember_MemberIdAndStatus(UUID memberId, LoanStatus status);
 }

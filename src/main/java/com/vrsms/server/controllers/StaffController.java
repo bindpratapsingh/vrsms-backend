@@ -10,6 +10,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/staff")
@@ -42,7 +46,39 @@ public class StaffController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+    // NEW: Get all registered members for the Manager/Clerk dashboards
+    @GetMapping("/members/all")
+    public ResponseEntity<?> getAllMembers() {
+        try {
+            // 1. Just grab everyone directly from the Member table!
+            List<Member> allMembers = memberRepository.findAll();
 
+            // 2. Prepare our list to send to React
+            List<Map<String, Object>> responseList = new ArrayList<>();
+
+            for (Member m : allMembers) {
+                User u = m.getUser(); // Get the attached User profile for their name and phone
+
+                if (u != null) {
+                    Map<String, Object> memberData = new HashMap<>();
+                    memberData.put("userId", u.getUserId());
+                    memberData.put("memberId", m.getMemberId());
+                    memberData.put("fullName", u.getFullName());
+                    memberData.put("phone", u.getPhone());
+                    memberData.put("address", m.getAddress());
+                    memberData.put("photoUrl", m.getPhotoUrl());
+                    // If your deposit field is named differently, just change getDepositPaid()
+                    memberData.put("depositPaid", m.getDepositPaid());
+
+                    responseList.add(memberData);
+                }
+            }
+            return ResponseEntity.ok(responseList);
+        } catch (Exception e) {
+            e.printStackTrace(); // You can ignore IntelliJ's warning about this!
+            return ResponseEntity.badRequest().body("Failed to fetch members: " + e.getMessage());
+        }
+    }
     // NEW: The Registration Endpoint
     @PostMapping("/register-member")
     public ResponseEntity<?> registerNewMember(@RequestBody RegistrationRequest request) {
@@ -100,5 +136,53 @@ public class StaffController {
         public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
         public Boolean getDepositPaid() { return depositPaid; }
         public void setDepositPaid(Boolean depositPaid) { this.depositPaid = depositPaid; }
+    }
+    // --- NEW: Edit Existing Member Details ---
+    @PutMapping("/members/edit/{userId}")
+    public ResponseEntity<?> updateMemberProfile(@PathVariable java.util.UUID userId, @RequestBody UpdateMemberRequest request) {
+        try {
+            com.vrsms.server.models.User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            com.vrsms.server.models.Member member = memberRepository.findByUser(user)
+                    .orElseThrow(() -> new RuntimeException("Member profile not found"));
+
+            // Update User table details
+            user.setFullName(request.getFullName());
+            user.setPhone(request.getPhone());
+            userRepository.save(user);
+
+            // Update Member table details
+            member.setAddress(request.getAddress());
+            if (request.getPhotoUrl() != null && !request.getPhotoUrl().isEmpty()) {
+                member.setPhotoUrl(request.getPhotoUrl());
+            }
+            memberRepository.save(member);
+
+            return ResponseEntity.ok("Member profile updated successfully!");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("Failed to update member: " + e.getMessage());
+        }
+    }
+
+    // --- DTO for Edit Request ---
+    public static class UpdateMemberRequest {
+        private String fullName;
+        private String phone;
+        private String address;
+        private String photoUrl;
+
+        public String getFullName() { return fullName; }
+        public void setFullName(String fullName) { this.fullName = fullName; }
+
+        public String getPhone() { return phone; }
+        public void setPhone(String phone) { this.phone = phone; }
+
+        public String getAddress() { return address; }
+        public void setAddress(String address) { this.address = address; }
+
+        public String getPhotoUrl() { return photoUrl; }
+        public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
     }
 }

@@ -139,4 +139,10 @@ public class Loan {
     public void setStatus(LoanStatus status) {
         this.status = status;
     }
+
+    public String getItemTitle() {
+        if (this.item != null) return this.item.getTitle();
+        //if (this.inventoryItem != null) return this.inventoryItem.getTitle();
+        return "Unknown Title";
+    }
 }

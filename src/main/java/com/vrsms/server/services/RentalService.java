@@ -38,6 +38,15 @@ public class RentalService {
         User clerk = userRepository.findById(clerkId)
                 .orElseThrow(() -> new RuntimeException("Clerk not found"));
 
+        // --- NEW RULE: RENTAL LIMIT (MAX 2) ---
+        // Count how many ACTIVE loans this member currently has
+        long activeCount = loanRepository.countByMember_MemberIdAndStatus(member.getMemberId(), LoanStatus.ACTIVE);
+
+        if (activeCount >= 2) {
+            throw new RuntimeException("Rental Blocked: Member already has 2 active rentals (Maximum Limit Reached).");
+        }
+        // --------------------------------------
+
         // 2. CHECK RULES: Is the item actually available?
         if (item.getStatus() != ItemStatus.AVAILABLE) {
             throw new RuntimeException("Item is currently not available for rent.");
