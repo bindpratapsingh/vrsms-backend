@@ -105,10 +105,15 @@ public class RentalController {
         }
     }
 
+
     // ==========================================
     // ENDPOINT: GET ALL TRANSACTIONS (GLOBAL)
     // ==========================================
     @GetMapping("/all")
+    public org.springframework.http.ResponseEntity<java.util.List<Loan>> getAllRentals() {
+        return org.springframework.http.ResponseEntity.ok(rentalService.getAllRentals());
+    }
+
     public ResponseEntity<?> getAllTransactions() {
         try {
             java.util.List<com.vrsms.server.models.Loan> allLoans = loanRepository.findAll();

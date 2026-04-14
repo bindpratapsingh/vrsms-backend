@@ -7,6 +7,10 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
+// --- NEW IMPORTS FOR JSON SAFETY ---
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 @Entity
 @Table(name = "loans")
 public class Loan {
@@ -18,6 +22,7 @@ public class Loan {
 
     @ManyToOne
     @JoinColumn(name = "member_id", nullable = false)
+    @JsonIgnoreProperties("loans") // FIX: Stops infinite JSON loops!
     private Member member;
 
     @ManyToOne
@@ -32,12 +37,16 @@ public class Loan {
     @JoinColumn(name = "returned_by")
     private User returnedBy;
 
+    // FIX: Safely formats exact time for the React Frontend
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "issue_date", nullable = false)
     private LocalDateTime issueDate;
 
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "due_date", nullable = false)
     private LocalDateTime dueDate;
 
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "return_date")
     private LocalDateTime returnDate;
 
@@ -95,7 +104,6 @@ public class Loan {
     public LocalDateTime getIssueDate() { return issueDate; }
     public void setIssueDate(LocalDateTime issueDate) { this.issueDate = issueDate; }
 
-    // FIX: This was returning ChronoLocalDate, it now correctly returns LocalDateTime
     public LocalDateTime getDueDate() { return dueDate; }
     public void setDueDate(LocalDateTime dueDate) { this.dueDate = dueDate; }
 
@@ -128,7 +136,14 @@ public class Loan {
 
     public String getItemTitle() {
         if (this.item != null) return this.item.getTitle();
-        //if (this.inventoryItem != null) return this.inventoryItem.getTitle();
         return "Unknown Title";
+    }
+
+    // FIX: Safely route through the User object to get the full name
+    public String getMemberName() {
+        if (this.member != null && this.member.getUser() != null) {
+            return this.member.getUser().getFullName();
+        }
+        return "Unknown Member";
     }
 }

@@ -150,4 +150,11 @@ public class RentalService {
 
         return loanRepository.save(loan);
     }
+    // ==========================================
+    // USE CASE: FETCH GLOBAL LEDGER TRANSACTIONS
+    // ==========================================
+    public java.util.List<Loan> getAllRentals() {
+        // Automatically fetches every transaction sorted by your database
+        return loanRepository.findAll();
+    }
 }
