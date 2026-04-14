@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,14 +27,14 @@ public class RentalService {
     private UserRepository userRepository;
     @Autowired
     private SystemConfigService configService;
-    @Autowired private CouponRepository couponRepository;
+    @Autowired
+    private CouponRepository couponRepository;
 
     // ==========================================
     // USE CASE: ISSUE RENTAL
     // ==========================================
     @Transactional
     public Loan issueRental(UUID memberId, UUID itemId, UUID clerkId) {
-        // 1. Find the Member, Item, and Clerk in the database
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new RuntimeException("Member not found"));
         InventoryItem item = itemRepository.findById(itemId)
@@ -40,47 +42,38 @@ public class RentalService {
         User clerk = userRepository.findById(clerkId)
                 .orElseThrow(() -> new RuntimeException("Clerk not found"));
 
-        // --- NEW RULE: RENTAL LIMIT (MAX 2) ---
-        // Count how many ACTIVE loans this member currently has
         long activeCount = loanRepository.countByMember_MemberIdAndStatus(member.getMemberId(), LoanStatus.ACTIVE);
 
         if (activeCount >= 2) {
             throw new RuntimeException("Rental Blocked: Member already has 2 active rentals (Maximum Limit Reached).");
         }
-        // --------------------------------------
 
-        // 2. CHECK RULES: Is the item actually available?
         if (item.getStatus() != ItemStatus.AVAILABLE) {
             throw new RuntimeException("Item is currently not available for rent.");
         }
 
-        // 3. CHECK RULES: Does the member owe money?
         if (member.getCurrentDues().compareTo(BigDecimal.ZERO) > 0) {
             throw new RuntimeException("Rental blocked: Member has outstanding fines.");
         }
 
-        // 4. Get System Rules (10 days limit)
         SystemConfig config = configService.getConfig();
 
-        // 5. Create the exact "Receipt" (Loan Record)
         Loan loan = new Loan();
         loan.setMember(member);
         loan.setItem(item);
         loan.setIssuedBy(clerk);
-        loan.setIssueDate(LocalDate.now());
 
-        // Calculate due date (Today + Max Loan Days)
-        loan.setDueDate(LocalDate.now().plusDays(config.getMaxRentalDays()));
+        // --- TIMESTAMPS FIXED TO INDIA STANDARD TIME (IST) ---
+        LocalDateTime nowIST = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+        loan.setIssueDate(nowIST);
+        loan.setDueDate(nowIST.plusDays(config.getMaxRentalDays()));
 
-        // Set the rental price from the item
-        loan.setRentAmount(item.getDailyRate().multiply(BigDecimal.valueOf(config.getMaxRentalDays())));
+        loan.setRentAmount(BigDecimal.ZERO); // Rent is calculated at return, not checkout!
         loan.setStatus(LoanStatus.ACTIVE);
 
-        // 6. Update the Item's status so no one else can rent it
         item.setStatus(ItemStatus.ON_LOAN);
         itemRepository.save(item);
 
-        // 7. Save the loan to the database
         return loanRepository.save(loan);
     }
 
@@ -88,7 +81,7 @@ public class RentalService {
     // USE CASE: PROCESS RETURN & CALCULATE FINES
     // ==========================================
     @Transactional
-    public Loan processReturn(UUID loanId, UUID clerkId, String couponCode) { // <-- ADDED PARAMETER
+    public Loan processReturn(UUID loanId, UUID clerkId, String couponCode) {
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan record not found"));
         User clerk = userRepository.findById(clerkId)
@@ -98,20 +91,23 @@ public class RentalService {
             throw new RuntimeException("This item is already returned or cancelled.");
         }
 
-        LocalDate today = LocalDate.now();
-        loan.setReturnDate(today);
+        // ==========================================
+        // DUAL-TIMEZONE FIX (IST CLOCK + DAY MATH)
+        // ==========================================
+        LocalDateTime rightNow = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+        loan.setReturnDate(rightNow);
         loan.setReturnedBy(clerk);
         loan.setStatus(LoanStatus.RETURNED);
 
-        long daysKept = ChronoUnit.DAYS.between(loan.getIssueDate(), today);
+        // Convert pure Dates (stripping the hours/minutes) just for the Money Math
+        LocalDate todayDate = rightNow.toLocalDate();
+        LocalDate issueDateOnly = loan.getIssueDate().toLocalDate();
+
+        long daysKept = ChronoUnit.DAYS.between(issueDateOnly, todayDate);
         if (daysKept < 1) daysKept = 1;
 
         BigDecimal actualRent = loan.getItem().getDailyRate().multiply(BigDecimal.valueOf(daysKept));
 
-
-        // ==========================================
-        // DYNAMIC DATABASE COUPON LOGIC
-        // ==========================================
         if (couponCode != null && !couponCode.trim().isEmpty()) {
             Optional<Coupon> promo = couponRepository.findByCodeIgnoreCaseAndActiveTrue(couponCode.trim());
 
@@ -119,33 +115,39 @@ public class RentalService {
                 double discount = promo.get().getDiscountPercentage() / 100.0;
                 BigDecimal discountAmount = actualRent.multiply(BigDecimal.valueOf(discount));
                 actualRent = actualRent.subtract(discountAmount);
+            } else {
+                throw new RuntimeException("Invalid or Expired Coupon Code: " + couponCode.toUpperCase());
             }
         }
+
         loan.setRentAmount(actualRent);
 
-        // 2. Calculate Fines if it is late!
-        if (today.isAfter(loan.getDueDate())) {
-            long daysLate = ChronoUnit.DAYS.between(loan.getDueDate(), today);
+        // Calculate Late Fines using pure Dates
+        BigDecimal totalFine = BigDecimal.ZERO;
+        LocalDate dueDateOnly = loan.getDueDate().toLocalDate();
+
+        if (todayDate.isAfter(dueDateOnly)) {
+            long daysLate = ChronoUnit.DAYS.between(dueDateOnly, todayDate);
             SystemConfig config = configService.getConfig();
+            totalFine = config.getLateFeePerDay().multiply(BigDecimal.valueOf(daysLate));
+        }
+        loan.setFineAmount(totalFine);
 
-            // Fine = days late * fine per day
-            BigDecimal totalFine = config.getLateFeePerDay().multiply(BigDecimal.valueOf(daysLate));
-            loan.setFineAmount(totalFine);
+        Member member = loan.getMember();
+        BigDecimal currentDues = member.getCurrentDues();
 
-            // Add the fine to the member's profile
-            Member member = loan.getMember();
-            member.setCurrentDues(member.getCurrentDues().add(totalFine));
-            memberRepository.save(member);
-        } else {
-            loan.setFineAmount(BigDecimal.ZERO); // No fine if returned on time
+        if (currentDues == null) {
+            currentDues = BigDecimal.ZERO;
         }
 
-        // 3. Put the item back on the shelf
+        BigDecimal totalOwedForThisTransaction = actualRent.add(totalFine);
+        member.setCurrentDues(currentDues.add(totalOwedForThisTransaction));
+        memberRepository.save(member);
+
         InventoryItem item = loan.getItem();
         item.setStatus(ItemStatus.AVAILABLE);
         itemRepository.save(item);
 
-        // 4. Save the updated receipt
         return loanRepository.save(loan);
     }
 }

@@ -2,10 +2,10 @@ package com.vrsms.server.models;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "loans")
@@ -33,13 +33,13 @@ public class Loan {
     private User returnedBy;
 
     @Column(name = "issue_date", nullable = false)
-    private LocalDate issueDate;
+    private LocalDateTime issueDate;
 
     @Column(name = "due_date", nullable = false)
-    private LocalDate dueDate;
+    private LocalDateTime dueDate;
 
     @Column(name = "return_date")
-    private LocalDate returnDate;
+    private LocalDateTime returnDate;
 
     @Column(name = "rent_amount", nullable = false)
     private BigDecimal rentAmount = BigDecimal.ZERO;
@@ -92,29 +92,15 @@ public class Loan {
         this.returnedBy = returnedBy;
     }
 
-    public LocalDate getIssueDate() {
-        return issueDate;
-    }
+    public LocalDateTime getIssueDate() { return issueDate; }
+    public void setIssueDate(LocalDateTime issueDate) { this.issueDate = issueDate; }
 
-    public void setIssueDate(LocalDate issueDate) {
-        this.issueDate = issueDate;
-    }
+    // FIX: This was returning ChronoLocalDate, it now correctly returns LocalDateTime
+    public LocalDateTime getDueDate() { return dueDate; }
+    public void setDueDate(LocalDateTime dueDate) { this.dueDate = dueDate; }
 
-    public LocalDate getDueDate() {
-        return dueDate;
-    }
-
-    public void setDueDate(LocalDate dueDate) {
-        this.dueDate = dueDate;
-    }
-
-    public LocalDate getReturnDate() {
-        return returnDate;
-    }
-
-    public void setReturnDate(LocalDate returnDate) {
-        this.returnDate = returnDate;
-    }
+    public LocalDateTime getReturnDate() { return returnDate; }
+    public void setReturnDate(LocalDateTime returnDate) { this.returnDate = returnDate; }
 
     public BigDecimal getRentAmount() {
         return rentAmount;
