@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -24,6 +25,7 @@ public class RentalService {
     private UserRepository userRepository;
     @Autowired
     private SystemConfigService configService;
+    @Autowired private CouponRepository couponRepository;
 
     // ==========================================
     // USE CASE: ISSUE RENTAL
@@ -86,7 +88,7 @@ public class RentalService {
     // USE CASE: PROCESS RETURN & CALCULATE FINES
     // ==========================================
     @Transactional
-    public Loan processReturn(UUID loanId, UUID clerkId) {
+    public Loan processReturn(UUID loanId, UUID clerkId, String couponCode) { // <-- ADDED PARAMETER
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan record not found"));
         User clerk = userRepository.findById(clerkId)
@@ -96,11 +98,30 @@ public class RentalService {
             throw new RuntimeException("This item is already returned or cancelled.");
         }
 
-        // 1. Mark as returned today
         LocalDate today = LocalDate.now();
         loan.setReturnDate(today);
         loan.setReturnedBy(clerk);
         loan.setStatus(LoanStatus.RETURNED);
+
+        long daysKept = ChronoUnit.DAYS.between(loan.getIssueDate(), today);
+        if (daysKept < 1) daysKept = 1;
+
+        BigDecimal actualRent = loan.getItem().getDailyRate().multiply(BigDecimal.valueOf(daysKept));
+
+
+        // ==========================================
+        // DYNAMIC DATABASE COUPON LOGIC
+        // ==========================================
+        if (couponCode != null && !couponCode.trim().isEmpty()) {
+            Optional<Coupon> promo = couponRepository.findByCodeIgnoreCaseAndActiveTrue(couponCode.trim());
+
+            if (promo.isPresent()) {
+                double discount = promo.get().getDiscountPercentage() / 100.0;
+                BigDecimal discountAmount = actualRent.multiply(BigDecimal.valueOf(discount));
+                actualRent = actualRent.subtract(discountAmount);
+            }
+        }
+        loan.setRentAmount(actualRent);
 
         // 2. Calculate Fines if it is late!
         if (today.isAfter(loan.getDueDate())) {
@@ -115,6 +136,8 @@ public class RentalService {
             Member member = loan.getMember();
             member.setCurrentDues(member.getCurrentDues().add(totalFine));
             memberRepository.save(member);
+        } else {
+            loan.setFineAmount(BigDecimal.ZERO); // No fine if returned on time
         }
 
         // 3. Put the item back on the shelf

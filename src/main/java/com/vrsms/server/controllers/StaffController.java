@@ -69,6 +69,7 @@ public class StaffController {
                     memberData.put("photoUrl", m.getPhotoUrl());
                     // If your deposit field is named differently, just change getDepositPaid()
                     memberData.put("depositPaid", m.getDepositPaid());
+                    memberData.put("currentDues", m.getCurrentDues());
 
                     responseList.add(memberData);
                 }
@@ -184,5 +185,27 @@ public class StaffController {
 
         public String getPhotoUrl() { return photoUrl; }
         public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
+    }
+
+    // ==========================================
+    // ENDPOINT: CLEAR MEMBER DUES
+    // ==========================================
+    @PostMapping("/members/{userId}/clear-dues")
+    public ResponseEntity<?> clearMemberDues(@PathVariable java.util.UUID userId) {
+        try {
+            com.vrsms.server.models.User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            com.vrsms.server.models.Member member = memberRepository.findByUser(user)
+                    .orElseThrow(() -> new RuntimeException("Member profile not found"));
+
+            // Reset their debt to ZERO
+            member.setCurrentDues(java.math.BigDecimal.ZERO);
+            memberRepository.save(member);
+
+            return ResponseEntity.ok("Member's outstanding dues have been cleared!");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to clear dues: " + e.getMessage());
+        }
     }
 }

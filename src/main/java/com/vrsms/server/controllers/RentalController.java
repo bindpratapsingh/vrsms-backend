@@ -38,7 +38,12 @@ public class RentalController {
     @PostMapping("/return")
     public ResponseEntity<?> processReturn(@RequestBody ReturnRequest request) {
         try {
-            Loan updatedLoan = rentalService.processReturn(request.getLoanId(), request.getClerkId());
+            // UPDATED: Passing the 3rd argument (the coupon code) to your service
+            Loan updatedLoan = rentalService.processReturn(
+                    request.getLoanId(),
+                    request.getClerkId(),
+                    request.getCouponCode() // <-- THIS IS THE NEW PIECE
+            );
             return ResponseEntity.ok(updatedLoan);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -64,13 +69,16 @@ public class RentalController {
     }
 
     public static class ReturnRequest {
-        private UUID loanId;
-        private UUID clerkId;
+        private java.util.UUID loanId;
+        private java.util.UUID clerkId;
+        private String couponCode; // <-- NEW: EXPECTS COUPON
 
-        public UUID getLoanId() { return loanId; }
-        public void setLoanId(UUID loanId) { this.loanId = loanId; }
-        public UUID getClerkId() { return clerkId; }
-        public void setClerkId(UUID clerkId) { this.clerkId = clerkId; }
+        public java.util.UUID getLoanId() { return loanId; }
+        public void setLoanId(java.util.UUID loanId) { this.loanId = loanId; }
+        public java.util.UUID getClerkId() { return clerkId; }
+        public void setClerkId(java.util.UUID clerkId) { this.clerkId = clerkId; }
+        public String getCouponCode() { return couponCode; }
+        public void setCouponCode(String couponCode) { this.couponCode = couponCode; }
     }
 
     @Autowired
@@ -94,6 +102,49 @@ public class RentalController {
             return ResponseEntity.ok(activeLoans);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ==========================================
+    // ENDPOINT: GET ALL TRANSACTIONS (GLOBAL)
+    // ==========================================
+    @GetMapping("/all")
+    public ResponseEntity<?> getAllTransactions() {
+        try {
+            java.util.List<com.vrsms.server.models.Loan> allLoans = loanRepository.findAll();
+            java.util.List<java.util.Map<String, Object>> responseList = new java.util.ArrayList<>();
+
+            for (com.vrsms.server.models.Loan l : allLoans) {
+                java.util.Map<String, Object> map = new java.util.HashMap<>();
+                map.put("loanId", l.getLoanId());
+                map.put("issueDate", l.getIssueDate());
+                map.put("returnDate", l.getReturnDate());
+                map.put("status", l.getStatus().toString());
+                map.put("rentAmount", l.getRentAmount() != null ? l.getRentAmount() : 0);
+                map.put("fineAmount", l.getFineAmount() != null ? l.getFineAmount() : 0);
+                map.put("itemTitle", l.getItemTitle());
+
+                // Safely grab the member's name
+                if (l.getMember() != null && l.getMember().getUser() != null) {
+                    map.put("memberName", l.getMember().getUser().getFullName());
+                } else {
+                    map.put("memberName", "Unknown Member");
+                }
+
+                responseList.add(map);
+            }
+
+            // Sort by newest first
+            responseList.sort((a, b) -> {
+                java.time.LocalDate dateA = (java.time.LocalDate) a.get("issueDate");
+                java.time.LocalDate dateB = (java.time.LocalDate) b.get("issueDate");
+                return dateB.compareTo(dateA);
+            });
+
+            return ResponseEntity.ok(responseList);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("Failed to fetch global transactions.");
         }
     }
 }

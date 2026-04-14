@@ -23,6 +23,8 @@ public class ManagerController {
     @Autowired private SystemConfigRepository configRepo;
     @Autowired private LoanRepository loanRepo;
     @Autowired private InventoryRepository inventoryRepo;
+    @Autowired
+    private com.vrsms.server.repositories.CouponRepository couponRepository;
 
     // --- 1. SYSTEM CONFIGURATION ---
     @GetMapping("/config")
@@ -69,5 +71,22 @@ public class ManagerController {
 
         return ResponseEntity.ok(stats);
 
+    }
+
+    @GetMapping("/coupons/all")
+    public ResponseEntity<?> getAllCoupons() {
+        return ResponseEntity.ok(couponRepository.findAll());
+    }
+
+    @PostMapping("/coupons/add")
+    public ResponseEntity<?> addCoupon(@RequestBody com.vrsms.server.models.Coupon coupon) {
+        coupon.setCode(coupon.getCode().toUpperCase());
+        return ResponseEntity.ok(couponRepository.save(coupon));
+    }
+
+    @DeleteMapping("/coupons/{id}")
+    public ResponseEntity<?> deleteCoupon(@PathVariable java.util.UUID id) {
+        couponRepository.deleteById(id);
+        return ResponseEntity.ok("Coupon deleted");
     }
 }
