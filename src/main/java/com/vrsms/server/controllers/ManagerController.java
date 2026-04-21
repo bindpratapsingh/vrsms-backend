@@ -80,6 +80,9 @@ public class ManagerController {
 
     @PostMapping("/coupons/add")
     public ResponseEntity<?> addCoupon(@RequestBody com.vrsms.server.models.Coupon coupon) {
+        if (coupon.getDiscountPercentage() < 0 || coupon.getDiscountPercentage() > 100) {
+            return ResponseEntity.badRequest().body("Error: Discount percentage must be between 0 and 100.");
+        }
         coupon.setCode(coupon.getCode().toUpperCase());
         return ResponseEntity.ok(couponRepository.save(coupon));
     }

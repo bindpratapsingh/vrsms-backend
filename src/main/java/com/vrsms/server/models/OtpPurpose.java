@@ -1,5 +1,7 @@
 package com.vrsms.server.models;
 
 public enum OtpPurpose {
-    REGISTER, LOGIN
+    LOGIN,
+    PASSWORD_RESET,
+    REGISTRATION
 }

@@ -112,7 +112,12 @@ public class RentalService {
             Optional<Coupon> promo = couponRepository.findByCodeIgnoreCaseAndActiveTrue(couponCode.trim());
 
             if (promo.isPresent()) {
-                double discount = promo.get().getDiscountPercentage() / 100.0;
+                // SANITIZATION: Force discount to stay between 0% and 100%
+                double rawDiscount = promo.get().getDiscountPercentage();
+                if (rawDiscount > 100.0) rawDiscount = 100.0;
+                if (rawDiscount < 0.0) rawDiscount = 0.0;
+
+                double discount = rawDiscount / 100.0;
                 BigDecimal discountAmount = actualRent.multiply(BigDecimal.valueOf(discount));
                 actualRent = actualRent.subtract(discountAmount);
             } else {

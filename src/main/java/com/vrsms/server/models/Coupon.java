@@ -1,6 +1,8 @@
 package com.vrsms.server.models;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.util.UUID;
 
 @Entity
@@ -13,7 +15,10 @@ public class Coupon {
     @Column(unique = true, nullable = false)
     private String code; // e.g., "DIWALI50"
 
+    @Min(value = 0, message = "Discount cannot be less than 0%")
+    @Max(value = 100, message = "Discount cannot exceed 100%")
     private int discountPercentage; // e.g., 50
+
     private boolean active = true;
 
     // Getters and Setters
