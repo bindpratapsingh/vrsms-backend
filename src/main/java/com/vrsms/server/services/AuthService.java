@@ -8,7 +8,7 @@ import com.vrsms.server.models.OtpPurpose;
 import com.vrsms.server.models.User;
 import com.vrsms.server.repositories.OtpChallengeRepository;
 import com.vrsms.server.repositories.UserRepository;
-import com.vrsms.server.repositories.MemberRepository; // <-- THE MISSING IMPORT!
+import com.vrsms.server.repositories.MemberRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List; // <-- ADDED IMPORT
 
 @Service
 public class AuthService {
@@ -50,10 +51,16 @@ public class AuthService {
                     .orElseThrow(() -> new RuntimeException("No account found. Please register first."));
         }
 
-        otpRepository.findByPhoneAndPurposeAndIsActiveTrue(phone, purpose).ifPresent(oldOtp -> {
-            oldOtp.setIsActive(false);
-            otpRepository.saveAndFlush(oldOtp);
-        });
+        // ==========================================
+        // FIX: Grab ALL stuck OTPs and deactivate them safely
+        // ==========================================
+        List<OtpChallenge> stuckOtps = otpRepository.findByPhoneAndPurposeAndIsActiveTrue(phone, purpose);
+        if (stuckOtps != null && !stuckOtps.isEmpty()) {
+            for (OtpChallenge oldOtp : stuckOtps) {
+                oldOtp.setIsActive(false);
+            }
+            otpRepository.saveAllAndFlush(stuckOtps);
+        }
 
         // 1. Always generate a local fallback OTP
         String fallbackOtp = String.format("%06d", new java.util.Random().nextInt(999999));
@@ -88,8 +95,17 @@ public class AuthService {
 
     @Transactional
     public User verifyOtp(String phone, OtpPurpose purpose, String code) {
-        OtpChallenge challenge = otpRepository.findByPhoneAndPurposeAndIsActiveTrue(phone, purpose)
-                .orElseThrow(() -> new RuntimeException("No active OTP request found."));
+
+        // ==========================================
+        // FIX: Find the active list and grab the newest one
+        // ==========================================
+        List<OtpChallenge> activeOtps = otpRepository.findByPhoneAndPurposeAndIsActiveTrue(phone, purpose);
+        if (activeOtps == null || activeOtps.isEmpty()) {
+            throw new RuntimeException("No active OTP request found.");
+        }
+
+        // Always grab the last one generated
+        OtpChallenge challenge = activeOtps.get(activeOtps.size() - 1);
 
         challenge.setAttempts((short) (challenge.getAttempts() + 1));
 
@@ -121,10 +137,12 @@ public class AuthService {
             throw new RuntimeException("Invalid OTP code.");
         }
 
-        // 4. Success!
-        challenge.setIsActive(false);
-        challenge.setVerifiedAt(LocalDateTime.now());
-        otpRepository.save(challenge);
+        // 4. Success! Turn off all active OTPs for this number
+        for (OtpChallenge otp : activeOtps) {
+            otp.setIsActive(false);
+            otp.setVerifiedAt(LocalDateTime.now());
+        }
+        otpRepository.saveAll(activeOtps);
 
         // CLEANED UP LOGIC: Only one check for LOGIN
         if (purpose == OtpPurpose.LOGIN) {
