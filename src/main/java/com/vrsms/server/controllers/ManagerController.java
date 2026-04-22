@@ -23,8 +23,10 @@ public class ManagerController {
     @Autowired private SystemConfigRepository configRepo;
     @Autowired private LoanRepository loanRepo;
     @Autowired private InventoryRepository inventoryRepo;
-    @Autowired
-    private com.vrsms.server.repositories.CouponRepository couponRepository;
+    @Autowired private com.vrsms.server.repositories.CouponRepository couponRepository;
+
+    // ---> NEW: Required to update member status <---
+    @Autowired private com.vrsms.server.repositories.MemberRepository memberRepository;
 
     // --- 1. SYSTEM CONFIGURATION ---
     @GetMapping("/config")
@@ -65,7 +67,7 @@ public class ManagerController {
         stats.put("totalInventoryCount", allItems.size());
         stats.put("totalLoansCount", allLoans.size());
 
-        // NEW: Attach the raw lists so the React dashboard can display the ledger!
+        // Attach the raw lists so the React dashboard can display the ledger!
         stats.put("inventory", allItems);
         stats.put("loans", allLoans);
 
@@ -91,5 +93,23 @@ public class ManagerController {
     public ResponseEntity<?> deleteCoupon(@PathVariable java.util.UUID id) {
         couponRepository.deleteById(id);
         return ResponseEntity.ok("Coupon deleted");
+    }
+
+    // ---> NEW: THE KILL SWITCH ENDPOINT <---
+    @PutMapping("/members/{memberId}/toggle-status")
+    public ResponseEntity<?> toggleMemberStatus(@PathVariable java.util.UUID memberId) {
+        try {
+            com.vrsms.server.models.Member member = memberRepository.findById(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found"));
+
+            // Flips true to false, or false to true
+            member.setActive(!member.isActive());
+            memberRepository.save(member);
+
+            String status = member.isActive() ? "Restored" : "Cancelled";
+            return ResponseEntity.ok("Membership successfully " + status + "!");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

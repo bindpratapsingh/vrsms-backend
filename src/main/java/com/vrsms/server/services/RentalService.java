@@ -37,6 +37,12 @@ public class RentalService {
     public Loan issueRental(UUID memberId, UUID itemId, UUID clerkId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        // ---> THE CANCELLATION FAILSAFE <---
+        if (!member.isActive()) {
+            throw new RuntimeException("Action Blocked: This membership has been cancelled. You cannot issue items to this user.");
+        }
+
         InventoryItem item = itemRepository.findById(itemId)
                 .orElseThrow(() -> new RuntimeException("Item not found"));
         User clerk = userRepository.findById(clerkId)

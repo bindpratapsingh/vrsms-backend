@@ -32,6 +32,10 @@ public class Member {
 
     @Column(name = "registered_at", insertable = false, updatable = false)
     private LocalDateTime registeredAt;
+
+    @Column(name = "is_active", nullable = false)
+    private boolean isActive = true;
+
 // --- GETTERS AND SETTERS ---
 
     public UUID getMemberId() {
@@ -89,5 +93,8 @@ public class Member {
     public void setRegisteredAt(LocalDateTime registeredAt) {
         this.registeredAt = registeredAt;
     }
+
+    public boolean isActive() { return isActive; }
+    public void setActive(boolean active) { isActive = active; }
     // TODO: Right-click -> Generate... -> Getter and Setter for all variables!
 }

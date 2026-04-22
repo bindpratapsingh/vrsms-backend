@@ -8,6 +8,7 @@ import com.vrsms.server.models.OtpPurpose;
 import com.vrsms.server.models.User;
 import com.vrsms.server.repositories.OtpChallengeRepository;
 import com.vrsms.server.repositories.UserRepository;
+import com.vrsms.server.repositories.MemberRepository; // <-- THE MISSING IMPORT!
 import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,9 @@ public class AuthService {
 
     @Autowired
     private OtpChallengeRepository otpRepository;
+
+    @Autowired
+    private MemberRepository memberRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -77,8 +81,6 @@ public class AuthService {
             System.out.println("Twilio Error: " + e.getMessage());
             System.out.println("FALLBACK LOGIN OTP FOR " + phone + ": " + fallbackOtp);
             System.out.println("========================================\n");
-
-            // Notice we do NOT throw an exception here. We want React to show the OTP input box seamlessly.
         }
 
         return "OTP sent successfully!";
@@ -98,7 +100,7 @@ public class AuthService {
             isApproved = true;
             System.out.println("Login approved via Local Fallback OTP.");
         } else {
-            // 2. If it doesn't match local, ask Twilio to verify it (in case it was a real Twilio SMS)
+            // 2. If it doesn't match local, ask Twilio to verify it
             try {
                 VerificationCheck verificationCheck = VerificationCheck.creator(twilioVerifyServiceSid)
                         .setTo(phone)
@@ -124,9 +126,20 @@ public class AuthService {
         challenge.setVerifiedAt(LocalDateTime.now());
         otpRepository.save(challenge);
 
+        // CLEANED UP LOGIC: Only one check for LOGIN
         if (purpose == OtpPurpose.LOGIN) {
-            return userRepository.findByPhone(phone).orElseThrow();
+            User user = userRepository.findByPhone(phone).orElseThrow();
+
+            // THE CANCELLATION FAILSAFE
+            if (user.getRole().name().equals("MEMBER")) {
+                com.vrsms.server.models.Member memberProfile = memberRepository.findByUser(user).orElse(null);
+                if (memberProfile != null && !memberProfile.isActive()) {
+                    throw new RuntimeException("ACCESS DENIED: Your membership has been cancelled by management.");
+                }
+            }
+            return user;
         }
+
         return null;
     }
 

@@ -1,35 +1,35 @@
 package com.vrsms.server.models;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "wishlist_items")
+@Table(name = "wishlists")
 public class WishlistItem {
-
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID wishlistId;
 
-    @Column(nullable = false)
-    private UUID memberId;
+    @ManyToOne
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member member;
 
-    @Column(nullable = false)
-    private UUID itemId;
+    @ManyToOne
+    @JoinColumn(name = "item_id", nullable = false)
+    private InventoryItem item;
 
-    private LocalDateTime addedOn = LocalDateTime.now();
+    @CreationTimestamp
+    @Column(updatable = false)
+    private LocalDateTime addedAt;
 
-    // --- GETTERS AND SETTERS ---
     public UUID getWishlistId() { return wishlistId; }
     public void setWishlistId(UUID wishlistId) { this.wishlistId = wishlistId; }
-
-    public UUID getMemberId() { return memberId; }
-    public void setMemberId(UUID memberId) { this.memberId = memberId; }
-
-    public UUID getItemId() { return itemId; }
-    public void setItemId(UUID itemId) { this.itemId = itemId; }
-
-    public LocalDateTime getAddedOn() { return addedOn; }
-    public void setAddedOn(LocalDateTime addedOn) { this.addedOn = addedOn; }
+    public Member getMember() { return member; }
+    public void setMember(Member member) { this.member = member; }
+    public InventoryItem getItem() { return item; }
+    public void setItem(InventoryItem item) { this.item = item; }
+    public LocalDateTime getAddedAt() { return addedAt; }
+    public void setAddedAt(LocalDateTime addedAt) { this.addedAt = addedAt; }
 }

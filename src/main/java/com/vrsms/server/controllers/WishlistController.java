@@ -1,74 +1,89 @@
 package com.vrsms.server.controllers;
 
+import com.vrsms.server.models.InventoryItem;
 import com.vrsms.server.models.Member;
 import com.vrsms.server.models.WishlistItem;
+import com.vrsms.server.repositories.InventoryItemRepository;
 import com.vrsms.server.repositories.MemberRepository;
 import com.vrsms.server.repositories.WishlistRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/wishlist")
 @CrossOrigin(origins = "*")
 public class WishlistController {
 
-    @Autowired
-    private WishlistRepository wishlistRepository;
+    @Autowired private WishlistRepository wishlistRepository;
+    @Autowired private MemberRepository memberRepository;
+    @Autowired private InventoryItemRepository inventoryRepository;
 
-    @Autowired
-    private MemberRepository memberRepository;
-
-    // 1. Toggle item in/out of wishlist
-    @PostMapping("/toggle")
-    @Transactional
-    public ResponseEntity<?> toggleWishlist(@RequestBody WishlistRequest request) {
+    // ==========================================
+    // GET ALL WISHLIST ITEMS FOR A MEMBER
+    // ==========================================
+    @GetMapping("/{userId}")
+    public ResponseEntity<?> getMemberWishlist(@PathVariable UUID userId) {
         try {
-            Member member = memberRepository.findByUser_UserId(request.getUserId())
-                    .orElseThrow(() -> new RuntimeException("Member not found."));
+            // FIX: Lookup the member using the User ID sent by React
+            Member member = memberRepository.findByUser_UserId(userId)
+                    .orElseThrow(() -> new RuntimeException("Member not found"));
 
-            boolean exists = wishlistRepository.existsByMemberIdAndItemId(member.getMemberId(), request.getItemId());
+            List<WishlistItem> rawList = wishlistRepository.findByMember_MemberIdOrderByAddedAtDesc(member.getMemberId());
 
-            if (exists) {
-                wishlistRepository.deleteByMemberIdAndItemId(member.getMemberId(), request.getItemId());
-                return ResponseEntity.ok("REMOVED");
+            List<InventoryItem> items = rawList.stream().map(WishlistItem::getItem).collect(Collectors.toList());
+            return ResponseEntity.ok(items);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ==========================================
+    // THE TOGGLE ENDPOINT
+    // ==========================================
+    @PostMapping("/toggle")
+    public ResponseEntity<?> toggleWishlist(@RequestBody ToggleRequest request) {
+        try {
+            // FIX: The frontend sends the User's ID. Translate it to the Member profile!
+            Member member = memberRepository.findByUser_UserId(request.getMemberId())
+                    .orElseThrow(() -> new RuntimeException("Member profile not found."));
+
+            java.util.Optional<WishlistItem> existing = wishlistRepository
+                    .findByMember_MemberIdAndItem_ItemId(member.getMemberId(), request.getItemId());
+
+            if (existing.isPresent()) {
+                // If it's already there, remove it
+                wishlistRepository.delete(existing.get());
+                return ResponseEntity.ok("REMOVED"); // Matches React state check
             } else {
-                WishlistItem item = new WishlistItem();
-                item.setMemberId(member.getMemberId());
-                item.setItemId(request.getItemId());
-                wishlistRepository.save(item);
-                return ResponseEntity.ok("ADDED");
+                // If it's not there, add it
+                InventoryItem item = inventoryRepository.findById(request.getItemId())
+                        .orElseThrow(() -> new RuntimeException("Item not found"));
+
+                WishlistItem newItem = new WishlistItem();
+                newItem.setMember(member);
+                newItem.setItem(item);
+                wishlistRepository.save(newItem);
+
+                return ResponseEntity.ok("ADDED"); // Matches React state check
             }
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body("Failed to toggle wishlist: " + e.getMessage());
         }
     }
 
-    // 2. Get user's saved items when they log in
-    @GetMapping("/{userId}")
-    public ResponseEntity<?> getMyWishlist(@PathVariable UUID userId) {
-        try {
-            Member member = memberRepository.findByUser_UserId(userId)
-                    .orElseThrow(() -> new RuntimeException("Member not found."));
+    // DTO for the React payload
+    public static class ToggleRequest {
+        private java.util.UUID memberId; // React sends the user.userId inside this field
+        private java.util.UUID itemId;
 
-            List<WishlistItem> list = wishlistRepository.findByMemberId(member.getMemberId());
-            return ResponseEntity.ok(list);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    // --- DTO ---
-    public static class WishlistRequest {
-        private UUID userId;
-        private UUID itemId;
-        public UUID getUserId() { return userId; }
-        public void setUserId(UUID userId) { this.userId = userId; }
-        public UUID getItemId() { return itemId; }
-        public void setItemId(UUID itemId) { this.itemId = itemId; }
+        public java.util.UUID getMemberId() { return memberId; }
+        public void setMemberId(java.util.UUID memberId) { this.memberId = memberId; }
+        public java.util.UUID getItemId() { return itemId; }
+        public void setItemId(java.util.UUID itemId) { this.itemId = itemId; }
     }
 }

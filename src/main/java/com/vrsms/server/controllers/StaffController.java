@@ -124,10 +124,40 @@ public class StaffController {
             response.put("userId", user.getUserId());
             response.put("photoUrl", member.getPhotoUrl());
             response.put("currentDues", member.getCurrentDues() != null ? member.getCurrentDues() : java.math.BigDecimal.ZERO);
+            response.put("isActive", member.isActive());
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ==========================================
+    // CLERK USE CASE: RESTORE CANCELLED MEMBER
+    // ==========================================
+    @PutMapping("/members/{userId}/restore")
+    public ResponseEntity<?> restoreCancelledMember(@PathVariable java.util.UUID userId) {
+        try {
+            com.vrsms.server.models.User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            com.vrsms.server.models.Member member = memberRepository.findByUser(user)
+                    .orElseThrow(() -> new RuntimeException("Member profile not found"));
+
+            if (member.isActive()) {
+                return ResponseEntity.badRequest().body("This member is already active.");
+            }
+
+            // 1. Reactivate the account
+            member.setActive(true);
+
+            // 2. Record the fresh ₹1000 deposit
+            member.setDepositPaid(java.math.BigDecimal.valueOf(1000.00));
+
+            memberRepository.save(member);
+
+            return ResponseEntity.ok("Membership restored successfully! ₹1000 deposit recorded.");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to restore member: " + e.getMessage());
         }
     }
 
@@ -149,6 +179,8 @@ public class StaffController {
                     memberData.put("photoUrl", m.getPhotoUrl());
                     memberData.put("depositPaid", m.getDepositPaid());
                     memberData.put("currentDues", m.getCurrentDues() != null ? m.getCurrentDues() : java.math.BigDecimal.ZERO);
+
+                    memberData.put("isActive", m.isActive());
 
                     responseList.add(memberData);
                 }
